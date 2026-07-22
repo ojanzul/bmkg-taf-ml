@@ -28,8 +28,15 @@ from bs4 import BeautifulSoup
 
 BASE_URL = "https://web-aviation.bmkg.go.id/web/metar_speci.php"
 
+# ==========================================
+# PERUBAHAN HANYA PADA BAGIAN INI
+# Menyamar sebagai Google Chrome di Windows untuk bypass 403
+# ==========================================
 HEADERS_COMMON = {
-    "User-Agent": "Mozilla/5.0 (BMKG-internal-research-script)",
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Connection': 'keep-alive',
 }
 
 
