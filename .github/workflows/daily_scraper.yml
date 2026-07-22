@@ -1,31 +1,59 @@
 name: BMKG METAR Data Pipeline
 
-# Jadwal otomatisasi. Format cron "0 0 * * *" artinya berjalan setiap jam 00:00 UTC setiap hari.
+# Jadwal otomatisasi.
+# Format cron "0 0 * * *" artinya berjalan setiap hari jam 00:00 UTC.
 on:
   schedule:
     - cron: '0 0 * * *'
-  # Memungkinkan Anda menjalankan pipeline secara manual lewat tombol di GitHub
-  workflow_dispatch: 
+
+# Memungkinkan Anda menjalankan pipeline secara manual lewat tombol di GitHub
+workflow_dispatch:
 
 jobs:
   scrape-and-upload:
     runs-on: ubuntu-latest
+
     steps:
+
+      # ==========================================
+      # 1. CHECKOUT REPOSITORY
+      # ==========================================
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+
+      # ==========================================
+      # 2. SETUP PYTHON
+      # ==========================================
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+
+      # ==========================================
+      # 3. INSTALL DEPENDENCIES
+      # ==========================================
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+
+      # ==========================================
+      # 4. TEST AKSES KE SERVER BMKG
+      # ==========================================
+      - name: Test BMKG Connectivity
+        run: |
+          python test_bmkg.py
+
+
+      # ==========================================
+      # 5. RUN PIPELINE
+      # ==========================================
       - name: Run Pipeline Script
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python pipeline.py
+        run: |
+          python pipeline.py
