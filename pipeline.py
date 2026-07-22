@@ -1,49 +1,315 @@
 import os
 from datetime import datetime, timedelta
-from supabase import create_client, Client
 
-# Mengambil fungsi dari script yang sudah Anda buat
-from scrape_metar_bmkg import scrape_wals
-from parse_metar_structured import parse_one_line
+from supabase import create_client
+
+from scrape_metar_bmkg import (
+    scrape_wals
+)
+
+from parse_metar_structured import (
+    parse_one_line
+)
+
+
+# ============================================================
+# RUN PIPELINE
+# ============================================================
 
 def run_pipeline():
-    # 1. Hubungkan ke Supabase (Kredensial disembunyikan via Environment Variables)
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    supabase: Client = create_client(url, key)
 
-    # 2. Tentukan waktu penarikan (misal: 24 jam terakhir agar aman jika ada yang terlewat)
+    print("")
+    print("=" * 60)
+    print("BMKG METAR DATA PIPELINE")
+    print("=" * 60)
+
+    # ========================================================
+    # STEP 1
+    # TENTUKAN RENTANG WAKTU
+    # ========================================================
+
     end_dt = datetime.utcnow()
-    start_dt = end_dt - timedelta(days=1)
 
-    print(f"Mulai scraping dari {start_dt} hingga {end_dt}...")
-    
-    # 3. Tarik data mentah menggunakan fungsi Anda
-    raw_lines = scrape_wals(start_dt, end_dt)
-    
-    # 4. Parse data menjadi format dictionary terstruktur
+    start_dt = (
+        end_dt
+        - timedelta(days=1)
+    )
+
+    print("")
+
+    print(
+        "Start time:",
+        start_dt
+    )
+
+    print(
+        "End time:",
+        end_dt
+    )
+
+    # ========================================================
+    # STEP 2
+    # SCRAPE DATA BMKG
+    # ========================================================
+
+    print("")
+    print(
+        "STEP 1: Scraping BMKG..."
+    )
+
+    raw_lines = scrape_wals(
+
+        start_dt,
+
+        end_dt
+
+    )
+
+    # ========================================================
+    # VALIDASI HASIL SCRAPING
+    # ========================================================
+
+    if not raw_lines:
+
+        print("")
+        print(
+            "ERROR: Tidak ada data METAR yang berhasil diambil."
+        )
+
+        print(
+            "Pipeline dihentikan."
+        )
+
+        raise RuntimeError(
+            "BMKG scraping returned no data."
+        )
+
+    print("")
+
+    print(
+        "Data mentah berhasil diambil:",
+        len(raw_lines)
+    )
+
+    # ========================================================
+    # STEP 3
+    # PARSING METAR
+    # ========================================================
+
+    print("")
+    print(
+        "STEP 2: Parsing METAR..."
+    )
+
     parsed_data = []
-    for line in raw_lines:
-        parsed = parse_one_line(line)
-        # Pastikan data memiliki waktu valid yang terisi
-        if parsed and parsed.get('valid_time_utc'): 
-            # Buang kunci yang tidak ada di tabel Supabase agar tidak error
-            parsed.pop('weather_phenomena', None)
-            parsed.pop('sky_layer1_cover', None)
-            parsed.pop('sky_layer1_height_ft', None)
-            parsed.pop('sky_layer2_cover', None)
-            parsed.pop('sky_layer2_height_ft', None)
-            parsed.pop('sky_layer3_cover', None)
-            parsed.pop('sky_layer3_height_ft', None)
-            
-            parsed_data.append(parsed)
 
-    # 5. Upload ke database menggunakan metode Upsert (Insert/Update)
-    if parsed_data:
-        response = supabase.table("metar_wals").upsert(parsed_data).execute()
-        print(f"Sukses! {len(parsed_data)} baris data METAR berhasil diunggah ke Supabase.")
-    else:
-        print("Tidak ada data baru untuk diunggah.")
+    failed_count = 0
+
+    for index, line in enumerate(
+        raw_lines,
+        start=1
+    ):
+
+        print(
+            f"Parsing {index}/{len(raw_lines)}"
+        )
+
+        try:
+
+            parsed = parse_one_line(
+                line
+            )
+
+            if parsed:
+
+                if parsed.get(
+                    "valid_time_utc"
+                ):
+
+                    parsed_data.append(
+                        parsed
+                    )
+
+                else:
+
+                    print(
+                        "WARNING: "
+                        "valid_time_utc kosong."
+                    )
+
+            else:
+
+                failed_count += 1
+
+                print(
+                    "WARNING: "
+                    "Parsing menghasilkan None."
+                )
+
+        except Exception as e:
+
+            failed_count += 1
+
+            print(
+                "ERROR parsing:"
+            )
+
+            print(
+                line
+            )
+
+            print(
+                e
+            )
+
+    # ========================================================
+    # HASIL PARSING
+    # ========================================================
+
+    print("")
+    print(
+        "Parsing selesai."
+    )
+
+    print(
+        "Berhasil:",
+        len(parsed_data)
+    )
+
+    print(
+        "Gagal:",
+        failed_count
+    )
+
+    # ========================================================
+    # JIKA TIDAK ADA DATA VALID
+    # ========================================================
+
+    if not parsed_data:
+
+        print("")
+        print(
+            "ERROR: Tidak ada data valid."
+        )
+
+        raise RuntimeError(
+            "No valid METAR data after parsing."
+        )
+
+    # ========================================================
+    # STEP 4
+    # CONNECT SUPABASE
+    # ========================================================
+
+    print("")
+    print(
+        "STEP 3: Connecting to Supabase..."
+    )
+
+    supabase_url = os.environ.get(
+        "SUPABASE_URL"
+    )
+
+    supabase_key = os.environ.get(
+        "SUPABASE_KEY"
+    )
+
+    if not supabase_url:
+
+        raise RuntimeError(
+            "SUPABASE_URL belum diset."
+        )
+
+    if not supabase_key:
+
+        raise RuntimeError(
+            "SUPABASE_KEY belum diset."
+        )
+
+    supabase = create_client(
+
+        supabase_url,
+
+        supabase_key
+
+    )
+
+    print(
+        "Supabase connection berhasil."
+    )
+
+    # ========================================================
+    # STEP 5
+    # UPLOAD DATA
+    # ========================================================
+
+    print("")
+    print(
+        "STEP 4: Upload data ke Supabase..."
+    )
+
+    try:
+
+        response = (
+
+            supabase
+
+            .table(
+                "metar_wals"
+            )
+
+            .upsert(
+                parsed_data
+            )
+
+            .execute()
+
+        )
+
+        print("")
+        print(
+            "Upload berhasil."
+        )
+
+        print(
+            "Jumlah data:",
+            len(parsed_data)
+        )
+
+        print(
+            "Response:",
+            response
+        )
+
+    except Exception as e:
+
+        print("")
+        print(
+            "ERROR saat upload ke Supabase:"
+        )
+
+        print(
+            e
+        )
+
+        raise
+
+    # ========================================================
+    # SELESAI
+    # ========================================================
+
+    print("")
+    print("=" * 60)
+    print(
+        "PIPELINE SELESAI"
+    )
+    print("=" * 60)
+
+
+# ============================================================
+# MAIN
+# ============================================================
 
 if __name__ == "__main__":
+
     run_pipeline()
